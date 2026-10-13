@@ -1,0 +1,184 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prepare Web Showcase & Interactive Pac-Man
+        run: |
+          mkdir -p _site
+          cp -r assets _site/ 2>/dev/null || true
+          cat << 'EOF' > _site/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Pac-Man Game - Python & Pygame</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body { background: #0b0e17; color: #f8fafc; font-family: 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 2rem 1rem; }
+              h1 { color: #facc15; font-size: 2.5rem; text-shadow: 0 0 16px rgba(250,204,21,0.5); margin-bottom: 0.5rem; letter-spacing: 2px; }
+              p.sub { color: #94a3b8; margin-bottom: 1.5rem; text-align: center; max-width: 600px; }
+              .game-box { background: #000; border: 4px solid #1d4ed8; border-radius: 12px; padding: 12px; box-shadow: 0 0 30px rgba(29,78,216,0.5); display: flex; flex-direction: column; align-items: center; }
+              .hud { display: flex; justify-content: space-between; width: 100%; padding: 0 8px 8px; font-weight: 700; color: #facc15; font-size: 1.1rem; }
+              canvas { background: #000; display: block; border-radius: 4px; }
+              .controls { margin-top: 1rem; color: #cbd5e1; font-size: 0.9rem; text-align: center; }
+              .btn { display: inline-block; margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: #facc15; color: #0f172a; font-weight: 700; text-decoration: none; border-radius: 8px; transition: 0.2s; }
+              .btn:hover { background: #fde047; transform: translateY(-2px); }
+            </style>
+          </head>
+          <body>
+            <h1>PAC-MAN</h1>
+            <p class="sub">Interactive Web Preview of the Python Pygame Pac-Man Project. Use Arrow Keys or WASD to move!</p>
+            <div class="game-box">
+              <div class="hud">
+                <span id="score">SCORE: 0</span>
+                <span id="status">READY!</span>
+              </div>
+              <canvas id="canvas" width="380" height="420"></canvas>
+            </div>
+            <div class="controls">Controls: <b>Arrow Keys</b> or <b>W A S D</b> &bull; Press <b>R</b> to Restart</div>
+            <a class="btn" href="https://github.com/prathaam17/Pacman-game" target="_blank">View Python Source Code on GitHub</a>
+            <script>
+              const canvas = document.getElementById('canvas');
+              const ctx = canvas.getContext('2d');
+              const TILE = 20;
+              const rawMap = [
+                "1111111111111111111",
+                "1000000001000000001",
+                "1011011101011101101",
+                "1000000000000000001",
+                "1011010111110101101",
+                "1000010001000100001",
+                "1111011101011101111",
+                "0001010000000101000",
+                "1111010110110101111",
+                "0000000100010000000",
+                "1111010111110101111",
+                "0001010000000101000",
+                "1111010111110101111",
+                "1000000001000000001",
+                "1011011101011101101",
+                "1001000000000001001",
+                "1101010111110101011",
+                "1000010001000100001",
+                "1011111101011111101",
+                "1000000000000000001",
+                "1111111111111111111"
+              ];
+              let map, pac, ghosts, score, gameOver, won;
+              function init() {
+                map = rawMap.map(r => r.split('').map(Number));
+                pac = { x: 9, y: 15, dx: 0, dy: 0, ndx: 0, ndy: 0 };
+                ghosts = [
+                  { x: 9, y: 9, dx: 1, dy: 0, color: '#ef4444' },
+                  { x: 8, y: 9, dx: -1, dy: 0, color: '#f472b6' },
+                  { x: 10, y: 9, dx: 0, dy: -1, color: '#38bdf8' },
+                  { x: 9, y: 8, dx: 0, dy: -1, color: '#fb923c' }
+                ];
+                score = 0; gameOver = false; won = false;
+                document.getElementById('score').textContent = 'SCORE: 0';
+                document.getElementById('status').textContent = 'PLAYING';
+              }
+              init();
+              window.addEventListener('keydown', e => {
+                if (e.key === 'ArrowUp' || e.key === 'w') { pac.ndx = 0; pac.ndy = -1; e.preventDefault(); }
+                if (e.key === 'ArrowDown' || e.key === 's') { pac.ndx = 0; pac.ndy = 1; e.preventDefault(); }
+                if (e.key === 'ArrowLeft' || e.key === 'a') { pac.ndx = -1; pac.ndy = 0; e.preventDefault(); }
+                if (e.key === 'ArrowRight' || e.key === 'd') { pac.ndx = 1; pac.ndy = 0; e.preventDefault(); }
+                if (e.key === 'r' || e.key === 'R') init();
+              });
+              function canMove(x, y) {
+                const nx = (x + 19) % 19;
+                return map[y] && map[y][nx] !== 1;
+              }
+              setInterval(() => {
+                if (gameOver || won) return;
+                if (canMove(pac.x + pac.ndx, pac.y + pac.ndy)) { pac.dx = pac.ndx; pac.dy = pac.ndy; }
+                if (canMove(pac.x + pac.dx, pac.y + pac.dy)) {
+                  pac.x = (pac.x + pac.dx + 19) % 19;
+                  pac.y += pac.dy;
+                }
+                if (map[pac.y][pac.x] === 0) {
+                  map[pac.y][pac.x] = 2;
+                  score += 10;
+                  document.getElementById('score').textContent = 'SCORE: ' + score;
+                  if (!map.some(r => r.includes(0))) { won = true; document.getElementById('status').textContent = 'YOU WIN! (Press R)'; }
+                }
+                ghosts.forEach(g => {
+                  const dirs = [{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1}].filter(d => canMove(g.x+d.dx, g.y+d.dy));
+                  const nonRev = dirs.filter(d => !(d.dx === -g.dx && d.dy === -g.dy));
+                  const pick = (nonRev.length ? nonRev : dirs)[Math.floor(Math.random() * (nonRev.length ? nonRev.length : dirs.length))];
+                  if (pick) { g.dx = pick.dx; g.dy = pick.dy; g.x = (g.x + g.dx + 19) % 19; g.y += g.dy; }
+                  if (g.x === pac.x && g.y === pac.y) { gameOver = true; document.getElementById('status').textContent = 'GAME OVER! (Press R)'; }
+                });
+                draw();
+              }, 170);
+              function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                for (let y = 0; y < map.length; y++) {
+                  for (let x = 0; x < 19; x++) {
+                    if (map[y][x] === 1) {
+                      ctx.fillStyle = '#1e3a8a';
+                      ctx.fillRect(x*TILE+1, y*TILE+1, TILE-2, TILE-2);
+                    } else if (map[y][x] === 0) {
+                      ctx.fillStyle = '#fef08a';
+                      ctx.beginPath();
+                      ctx.arc(x*TILE+TILE/2, y*TILE+TILE/2, 2.5, 0, Math.PI*2);
+                      ctx.fill();
+                    }
+                  }
+                }
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(pac.x*TILE+TILE/2, pac.y*TILE+TILE/2, TILE/2-2, 0.2*Math.PI, 1.8*Math.PI);
+                ctx.lineTo(pac.x*TILE+TILE/2, pac.y*TILE+TILE/2);
+                ctx.fill();
+                ghosts.forEach(g => {
+                  ctx.fillStyle = g.color;
+                  ctx.beginPath();
+                  ctx.arc(g.x*TILE+TILE/2, g.y*TILE+TILE/2, TILE/2-2, Math.PI, 0);
+                  ctx.lineTo(g.x*TILE+TILE-2, g.y*TILE+TILE-2);
+                  ctx.lineTo(g.x*TILE+2, g.y*TILE+TILE-2);
+                  ctx.fill();
+                });
+              }
+              draw();
+            </script>
+          </body>
+          </html>
+          EOF
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './_site'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
